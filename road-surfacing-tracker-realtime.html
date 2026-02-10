@@ -1270,11 +1270,16 @@
             const urlParams = new URLSearchParams(window.location.search);
             const viewJobId = urlParams.get('job');
             
+            console.log('URL parameters:', window.location.search);
+            console.log('Job ID from URL:', viewJobId);
+            
             if (viewJobId) {
                 isViewMode = true;
                 currentJobId = viewJobId;
                 document.body.classList.add('view-mode');
                 document.getElementById('readOnlyBanner').style.display = 'block';
+                
+                console.log('View mode activated for job:', currentJobId);
                 
                 // Start polling for updates
                 startSyncPolling();
@@ -1805,8 +1810,8 @@
             const job = getCurrentJob();
             if (!job) return;
 
-            const baseUrl = window.location.origin + window.location.pathname;
-            const shareUrl = `${baseUrl}?job=${job.id}`;
+            // Generate share URL with job ID
+            const shareUrl = `${window.location.origin}?job=${job.id}`;
             
             document.getElementById('shareUrl').value = shareUrl;
             
@@ -1825,6 +1830,8 @@
             });
             
             document.getElementById('qrModal').classList.add('active');
+            
+            console.log('QR Code URL:', shareUrl); // Debug log to verify
         }
 
         function closeQRModal() {
