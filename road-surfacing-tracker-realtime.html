@@ -1158,6 +1158,14 @@
         // Initialize storage
         async function initStorage() {
             const jobs = await fetchAllJobs();
+            
+            // If in view mode, currentJobId is already set from URL
+            if (isViewMode) {
+                console.log('View mode - using job ID from URL:', currentJobId);
+                return; // Don't change currentJobId
+            }
+            
+            // Edit mode - select first available job or create default
             if (!jobs || Object.keys(jobs).length === 0) {
                 // Create a default job
                 const defaultJob = createJob('Sample Job - Main Street');
@@ -1237,10 +1245,27 @@
         async function loadCurrentJob() {
             // Fetch fresh data from server
             const job = await fetchJob(currentJobId);
-            if (!job) return;
+            if (!job) {
+                console.error('Job not found:', currentJobId);
+                if (isViewMode) {
+                    // Show error message in view mode
+                    document.body.innerHTML = `
+                        <div style="text-align: center; padding: 100px 20px; color: white;">
+                            <h1 style="font-size: 3rem; margin-bottom: 20px;">⚠️</h1>
+                            <h2 style="margin-bottom: 20px;">Job Not Found</h2>
+                            <p>This job may have been deleted or the link is incorrect.</p>
+                        </div>
+                    `;
+                }
+                return;
+            }
 
-            document.getElementById('jobName').value = job.name;
-            document.getElementById('startTime').value = job.startTime;
+            console.log('Loaded job:', job.name, 'ID:', job.id);
+
+            if (!isViewMode) {
+                document.getElementById('jobName').value = job.name;
+                document.getElementById('startTime').value = job.startTime;
+            }
             document.getElementById('displayJobName').textContent = job.name;
             
             updateDisplay();
@@ -1277,7 +1302,11 @@
                 isViewMode = true;
                 currentJobId = viewJobId;
                 document.body.classList.add('view-mode');
-                document.getElementById('readOnlyBanner').style.display = 'block';
+                
+                // Update banner to show we're in view mode
+                const banner = document.getElementById('readOnlyBanner');
+                banner.style.display = 'block';
+                banner.innerHTML = '👁️ View-only mode - You are viewing live progress updates';
                 
                 console.log('View mode activated for job:', currentJobId);
                 
@@ -1860,9 +1889,10 @@
         }
 
         // Initialize
-        checkViewMode();
+        checkViewMode(); // Must be first - sets currentJobId from URL if present
         initStorage().then(() => {
-            loadCurrentJob();
+            console.log('Storage initialized. Current job ID:', currentJobId);
+            loadCurrentJob(); // Load the job (either from URL or first available)
         });
         setInterval(updateCurrentTime, 1000);
         updateCurrentTime();
