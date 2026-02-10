@@ -1,0 +1,25 @@
+{
+  "name": "road-surfacing-tracker",
+  "version": "1.0.0",
+  "description": "Real-time road surfacing job progress tracker with auto-cleanup database",
+  "main": "server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "cleanup": "curl -X POST http://localhost:3000/api/cleanup"
+  },
+  "keywords": [
+    "road-surfacing",
+    "job-tracker",
+    "progress-tracking",
+    "real-time"
+  ],
+  "author": "",
+  "license": "ISC",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "dependencies": {}
+}

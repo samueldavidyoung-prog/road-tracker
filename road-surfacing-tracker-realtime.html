@@ -1,0 +1,1864 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Road Surfacing Progress Tracker</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+
+        .job-selector {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        .job-selector-content {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .job-selector select {
+            flex: 1;
+            min-width: 200px;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            background: white;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+        }
+
+        .card h2 {
+            margin-bottom: 20px;
+            color: #333;
+            font-size: 1.5rem;
+        }
+
+        /* Progress Circle */
+        .progress-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+        }
+
+        .circle-wrapper {
+            position: relative;
+            width: 400px;
+            height: 400px;
+        }
+
+        .progress-circle {
+            transform: rotate(-90deg);
+        }
+
+        .segment {
+            cursor: pointer;
+            transition: opacity 0.3s, stroke-width 0.3s;
+            stroke-width: 2;
+        }
+
+        .segment:hover {
+            opacity: 0.8;
+            stroke-width: 3;
+        }
+
+        .segment.completed {
+            opacity: 1;
+        }
+
+        .segment.in-progress {
+            opacity: 0.7;
+            animation: pulse 2s infinite;
+        }
+
+        .segment.pending {
+            opacity: 0.3;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 0.7; }
+            50% { opacity: 0.9; }
+        }
+
+        .center-info {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            pointer-events: none;
+        }
+
+        .center-info .percentage {
+            font-size: 3.5rem;
+            font-weight: bold;
+            color: #667eea;
+        }
+
+        .center-info .label {
+            font-size: 1rem;
+            color: #666;
+            margin-top: 5px;
+        }
+
+        .time-info {
+            width: 100%;
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+        }
+
+        .time-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .time-row:last-child {
+            border-bottom: none;
+        }
+
+        .time-row .label {
+            font-weight: 600;
+            color: #555;
+        }
+
+        .time-row .value {
+            color: #667eea;
+            font-weight: 700;
+        }
+
+        .sync-indicator {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .sync-indicator.syncing {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .sync-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #155724;
+        }
+
+        .sync-indicator.syncing .sync-dot {
+            background: #856404;
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        /* Controls */
+        .controls {
+            margin-bottom: 20px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+        }
+
+        .input-group input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            flex: 1;
+            min-width: 150px;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #f8f9fa;
+            color: #333;
+            border: 2px solid #e0e0e0;
+        }
+
+        .btn-secondary:hover {
+            background: #e9ecef;
+        }
+
+        .btn-success {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        /* Segments Table */
+        .segments-list {
+            margin-top: 20px;
+        }
+
+        .segment-item {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-left: 4px solid #ccc;
+            transition: all 0.3s;
+        }
+
+        .segment-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+
+        .segment-item.completed {
+            border-left-color: #28a745;
+        }
+
+        .segment-item.in-progress {
+            border-left-color: #ffc107;
+        }
+
+        .segment-item.pending {
+            border-left-color: #ccc;
+        }
+
+        .segment-item.overdue {
+            border-left-color: #dc3545;
+            background: #fff5f5;
+        }
+
+        .segment-item.overdue:hover {
+            background: #ffe6e6;
+        }
+
+        .segment-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .segment-name {
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: #333;
+        }
+
+        .segment-status {
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+        }
+
+        .segment-status.completed {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .segment-status.in-progress {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .segment-status.pending {
+            background: #e2e3e5;
+            color: #6c757d;
+        }
+
+        .segment-status.overdue {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .segment-details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 10px;
+        }
+
+        .segment-detail {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.9rem;
+            color: #666;
+        }
+
+        .segment-actions {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 0.85rem;
+            border-radius: 6px;
+            border: none;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-edit {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-edit:hover {
+            background: #5568d3;
+        }
+
+        .btn-complete {
+            background: #28a745;
+            color: white;
+        }
+
+        .btn-complete:hover {
+            background: #218838;
+        }
+
+        .btn-reset {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .btn-reset:hover {
+            background: #e0a800;
+        }
+
+        .btn-delete {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-delete:hover {
+            background: #c82333;
+        }
+
+        .btn-delay {
+            background: #ff6b6b;
+            color: white;
+        }
+
+        .btn-delay:hover {
+            background: #ee5a52;
+        }
+
+        .delay-badge {
+            display: inline-block;
+            background: #fff5f5;
+            color: #dc3545;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-left: 8px;
+            border: 1px solid #f8d7da;
+        }
+
+        .bulk-actions {
+            background: #e9ecef;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .bulk-actions h4 {
+            font-size: 0.95rem;
+            color: #666;
+            margin-bottom: 10px;
+        }
+
+        .bulk-actions-buttons {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .quick-complete {
+            padding: 8px 16px;
+            background: white;
+            border: 2px solid #28a745;
+            color: #28a745;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .quick-complete:hover {
+            background: #28a745;
+            color: white;
+        }
+
+        .quick-complete.active {
+            background: #28a745;
+            color: white;
+        }
+
+        #delayHistory {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        #delayHistory h4 {
+            position: sticky;
+            top: 0;
+            background: white;
+            padding: 10px 0;
+            z-index: 1;
+        }
+
+        /* Completion Page */
+        .completion-page {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+            border-radius: 20px;
+            color: white;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            max-width: 900px;
+            margin: 0 auto 30px;
+        }
+
+        .completion-page.active {
+            display: block;
+        }
+
+        body.view-mode .completion-page.active {
+            margin-top: 50px;
+        }
+
+        .completion-icon {
+            font-size: 5rem;
+            margin-bottom: 20px;
+            animation: checkmark 0.5s ease-in-out;
+        }
+
+        @keyframes checkmark {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+
+        .completion-page h2 {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .completion-page p {
+            font-size: 1.3rem;
+            margin-bottom: 30px;
+            opacity: 0.95;
+        }
+
+        .completion-page .btn {
+            background: white;
+            color: #28a745;
+            font-size: 1.1rem;
+            padding: 15px 40px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .completion-page .btn:hover {
+            background: #f8f9fa;
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+        }
+
+        .contact-info-box {
+            background: white;
+            color: #333;
+            border-radius: 15px;
+            padding: 25px;
+            margin-top: 20px;
+            text-align: left;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+
+        .contact-info-box h3 {
+            color: #28a745;
+            margin-bottom: 15px;
+            font-size: 1.3rem;
+        }
+
+        .contact-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 0;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .contact-item:last-child {
+            border-bottom: none;
+        }
+
+        .contact-item-icon {
+            font-size: 1.5rem;
+            width: 40px;
+            text-align: center;
+        }
+
+        .contact-item-content {
+            flex: 1;
+        }
+
+        .contact-item-label {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 2px;
+        }
+
+        .contact-item-value {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .contact-item-value a {
+            color: #667eea;
+            text-decoration: none;
+        }
+
+        .contact-item-value a:hover {
+            text-decoration: underline;
+        }
+
+        .hide-on-complete {
+            display: block;
+        }
+
+        body.view-mode .completion-page.active ~ .container .hide-on-complete {
+            display: none;
+        }
+
+        body.view-mode .completion-page.active ~ .container .header {
+            display: none;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-header h3 {
+            font-size: 1.5rem;
+            color: #333;
+        }
+
+        .close-modal {
+            background: none;
+            border: none;
+            font-size: 2rem;
+            color: #999;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .close-modal:hover {
+            color: #333;
+        }
+
+        .legend {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+        }
+
+        .qr-section {
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 15px;
+            margin-top: 20px;
+        }
+
+        #qrcode {
+            display: inline-block;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+
+        .share-url {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .share-url input {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 0.9rem;
+        }
+
+        .copy-btn {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .copy-btn:hover {
+            background: #5568d3;
+        }
+
+        .read-only-banner {
+            background: #fff3cd;
+            color: #856404;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 600;
+        }
+
+        .edit-mode-only {
+            display: block;
+        }
+
+        .view-mode .edit-mode-only {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <!-- Completion Page (shown when job is 100% complete in view mode) -->
+    <div class="completion-page" id="completionPage">
+        <div class="completion-icon">✅</div>
+        <h2>Road Work Complete!</h2>
+        <p>This road has been successfully resurfaced and is now ready for public use.</p>
+        <p style="font-size: 1.1rem; margin-bottom: 30px;">Thank you for your patience during the works.</p>
+        
+        <button class="btn" onclick="toggleContactInfo()">
+            📞 Report an Issue or Complaint
+        </button>
+
+        <div id="contactInfoBox" style="display: none;">
+            <div class="contact-info-box">
+                <h3>Contact Information</h3>
+                
+                <div class="contact-item">
+                    <div class="contact-item-icon">📞</div>
+                    <div class="contact-item-content">
+                        <div class="contact-item-label">Phone</div>
+                        <div class="contact-item-value"><a href="tel:+441234567890">+44 1234 567890</a></div>
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <div class="contact-item-icon">✉️</div>
+                    <div class="contact-item-content">
+                        <div class="contact-item-label">Email</div>
+                        <div class="contact-item-value"><a href="mailto:complaints@roadworks.co.uk">complaints@roadworks.co.uk</a></div>
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <div class="contact-item-icon">🌐</div>
+                    <div class="contact-item-content">
+                        <div class="contact-item-label">Website</div>
+                        <div class="contact-item-value"><a href="https://www.roadworks.co.uk/complaints" target="_blank">www.roadworks.co.uk/complaints</a></div>
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <div class="contact-item-icon">🕐</div>
+                    <div class="contact-item-content">
+                        <div class="contact-item-label">Office Hours</div>
+                        <div class="contact-item-value">Monday - Friday: 8:00 AM - 6:00 PM</div>
+                    </div>
+                </div>
+
+                <div class="contact-item">
+                    <div class="contact-item-icon">📍</div>
+                    <div class="contact-item-content">
+                        <div class="contact-item-label">Address</div>
+                        <div class="contact-item-value">
+                            Road Works Ltd<br>
+                            123 Construction Avenue<br>
+                            Colchester, Essex, CO1 1AB
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 2px solid #e0e0e0;">
+                    <p style="font-size: 0.9rem; color: #666; line-height: 1.6;">
+                        <strong>What to include in your complaint:</strong><br>
+                        • Specific location of the issue<br>
+                        • Description of the problem<br>
+                        • Photos if possible<br>
+                        • Your contact details for follow-up
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container hide-on-complete">
+        <div class="header">
+            <h1>🛣️ Road Surfacing Progress Tracker</h1>
+            <p>Monitor your road surfacing job in real-time</p>
+        </div>
+
+        <div class="job-selector edit-mode-only">
+            <div class="job-selector-content">
+                <select id="jobSelect" onchange="switchJob()">
+                    <option value="">Select a job...</option>
+                </select>
+                <button class="btn btn-success" onclick="createNewJob()">+ New Job</button>
+                <button class="btn btn-secondary" onclick="showQRCode()">📱 Share Job</button>
+                <div class="sync-indicator" id="syncIndicator">
+                    <span class="sync-dot"></span>
+                    <span>Synced</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="readOnlyBanner" class="read-only-banner hide-on-complete" style="display: none;">
+            👁️ View-only mode - You are viewing live progress updates
+        </div>
+
+        <div class="main-content hide-on-complete">
+            <!-- Progress Circle -->
+            <div class="card">
+                <h2>Job Progress</h2>
+                <div class="progress-container">
+                    <div class="circle-wrapper">
+                        <svg class="progress-circle" width="400" height="400" viewBox="0 0 400 400">
+                            <g id="segments"></g>
+                        </svg>
+                        <div class="center-info">
+                            <div class="percentage" id="overallProgress">0%</div>
+                            <div class="label">Complete</div>
+                        </div>
+                    </div>
+
+                    <div class="time-info">
+                        <div class="time-row">
+                            <span class="label">Job Name:</span>
+                            <span class="value" id="displayJobName">--</span>
+                        </div>
+                        <div class="time-row">
+                            <span class="label">Start Time:</span>
+                            <span class="value" id="displayStartTime">Not set</span>
+                        </div>
+                        <div class="time-row">
+                            <span class="label">Current Time:</span>
+                            <span class="value" id="currentTime">--:--</span>
+                        </div>
+                        <div class="time-row" id="delayRow" style="display: none;">
+                            <span class="label">Total Delays:</span>
+                            <span class="value" id="totalDelays" style="color: #dc3545;">0 mins</span>
+                        </div>
+                        <div class="time-row">
+                            <span class="label">Estimated End:</span>
+                            <span class="value" id="estimatedEnd">Not calculated</span>
+                        </div>
+                        <div class="time-row">
+                            <span class="label">Total Duration:</span>
+                            <span class="value" id="totalDuration">0 mins</span>
+                        </div>
+                    </div>
+
+                    <div class="legend">
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: rgba(40, 167, 69, 0.8);"></div>
+                            <span>Completed</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: rgba(255, 193, 7, 0.8);"></div>
+                            <span>In Progress</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: rgba(108, 117, 125, 0.3);"></div>
+                            <span>Pending</span>
+                        </div>
+                        <div class="legend-item">
+                            <div class="legend-color" style="background: rgba(220, 53, 69, 0.8);"></div>
+                            <span>Overdue</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Controls and Segments -->
+            <div class="card">
+                <h2>Job Details</h2>
+                <div class="controls edit-mode-only">
+                    <div class="input-group">
+                        <label for="jobName">Job Name</label>
+                        <input type="text" id="jobName" placeholder="e.g., Main Street Resurfacing" onchange="updateJobName()">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="startTime">Job Start Time</label>
+                        <input type="datetime-local" id="startTime" onchange="updateStartTime()">
+                    </div>
+
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="addSegment()">+ Add Segment</button>
+                        <button class="btn btn-delay" onclick="addDelay()">⏱️ Add Delay</button>
+                        <button class="btn btn-secondary" onclick="resetJob()">Reset Job</button>
+                    </div>
+                </div>
+
+                <div class="bulk-actions edit-mode-only" id="bulkActions">
+                    <h4>Quick Complete</h4>
+                    <div class="bulk-actions-buttons" id="bulkCompleteButtons"></div>
+                </div>
+
+                <div class="segments-list" id="segmentsList"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div class="modal" id="editModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Edit Segment</h3>
+                <button class="close-modal" onclick="closeModal()">&times;</button>
+            </div>
+            <div class="input-group">
+                <label for="editName">Segment Name</label>
+                <input type="text" id="editName" placeholder="e.g., Base Layer Prep">
+            </div>
+            <div class="input-group">
+                <label for="editDuration">Estimated Duration (minutes)</label>
+                <input type="number" id="editDuration" placeholder="e.g., 60" min="1">
+            </div>
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="saveSegment()">Save Changes</button>
+                <button class="btn btn-secondary" onclick="deleteSegment()">Delete Segment</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div class="modal" id="qrModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Share Job Progress</h3>
+                <button class="close-modal" onclick="closeQRModal()">&times;</button>
+            </div>
+            <div class="qr-section">
+                <p style="margin-bottom: 10px; color: #666;">Scan this QR code to view live progress</p>
+                <div id="qrcode"></div>
+                <div class="share-url">
+                    <input type="text" id="shareUrl" readonly>
+                    <button class="copy-btn" onclick="copyUrl()">Copy</button>
+                </div>
+                <p style="margin-top: 15px; font-size: 0.9rem; color: #666;">
+                    Share this link with your team to let them view real-time progress updates
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delay Modal -->
+    <div class="modal" id="delayModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Add Delay</h3>
+                <button class="close-modal" onclick="closeDelayModal()">&times;</button>
+            </div>
+            <div class="input-group">
+                <label for="delayMinutes">Delay Duration (minutes)</label>
+                <input type="number" id="delayMinutes" placeholder="e.g., 30" min="1" value="15">
+            </div>
+            <div class="input-group">
+                <label for="delayReason">Reason for Delay</label>
+                <input type="text" id="delayReason" placeholder="e.g., Weather, Equipment malfunction, Material shortage">
+            </div>
+            <div class="input-group">
+                <label for="delaySegment">Apply to Segment (Optional)</label>
+                <select id="delaySegment">
+                    <option value="">All remaining segments</option>
+                </select>
+            </div>
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="saveDelay()">Add Delay</button>
+                <button class="btn btn-secondary" onclick="closeDelayModal()">Cancel</button>
+            </div>
+            <div id="delayHistory" style="margin-top: 20px;">
+                <h4 style="font-size: 1rem; margin-bottom: 10px; color: #666;">Delay History</h4>
+                <div id="delayList"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Backend API configuration - Auto-detect environment
+        const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:3000/api'  // Local development
+            : window.location.origin + '/api';  // Production (Glitch, Railway, etc.)
+        
+        console.log('API URL:', API_URL);  // Debug log
+        
+        // Storage via API (replaces localStorage)
+        let currentJobId = null;
+        let isViewMode = false;
+        let editingSegmentId = null;
+        let syncInterval = null;
+        let jobsCache = {};
+
+        const colors = {
+            completed: 'rgba(40, 167, 69, 0.8)',
+            'in-progress': 'rgba(255, 193, 7, 0.8)',
+            pending: 'rgba(108, 117, 125, 0.3)',
+            overdue: 'rgba(220, 53, 69, 0.8)'
+        };
+
+        // Default template for new jobs
+        const defaultSegments = [
+            { id: 1, name: 'Road Closure and Pedestrian Segregation', duration: 30, status: 'pending' },
+            { id: 2, name: 'Road Planing', duration: 60, status: 'pending' },
+            { id: 3, name: 'Road Preparation', duration: 45, status: 'pending' },
+            { id: 4, name: 'Road Surfacing', duration: 60, status: 'pending' },
+            { id: 5, name: 'Road Lining', duration: 30, status: 'pending' }
+        ];
+
+        // API Functions
+        async function fetchAllJobs() {
+            try {
+                const response = await fetch(`${API_URL}/jobs`);
+                if (!response.ok) throw new Error('Failed to fetch jobs');
+                const jobs = await response.json();
+                jobsCache = jobs;
+                return jobs;
+            } catch (error) {
+                console.error('Error fetching jobs:', error);
+                alert('Unable to connect to server. Please ensure the server is running on http://localhost:3000');
+                return {};
+            }
+        }
+
+        async function fetchJob(jobId) {
+            try {
+                const response = await fetch(`${API_URL}/jobs/${jobId}`);
+                if (!response.ok) throw new Error('Job not found');
+                const job = await response.json();
+                jobsCache[jobId] = job;
+                return job;
+            } catch (error) {
+                console.error('Error fetching job:', error);
+                return null;
+            }
+        }
+
+        async function saveJobToServer(job) {
+            try {
+                const method = jobsCache[job.id] ? 'PUT' : 'POST';
+                const url = method === 'PUT' ? `${API_URL}/jobs/${job.id}` : `${API_URL}/jobs`;
+                
+                const response = await fetch(url, {
+                    method: method,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(job)
+                });
+                
+                if (!response.ok) throw new Error('Failed to save job');
+                const savedJob = await response.json();
+                jobsCache[savedJob.id] = savedJob;
+                showSyncIndicator();
+                return savedJob;
+            } catch (error) {
+                console.error('Error saving job:', error);
+                alert('Failed to save changes to server');
+                return null;
+            }
+        }
+
+        async function deleteJobFromServer(jobId) {
+            try {
+                const response = await fetch(`${API_URL}/jobs/${jobId}`, {
+                    method: 'DELETE'
+                });
+                if (!response.ok) throw new Error('Failed to delete job');
+                delete jobsCache[jobId];
+                return true;
+            } catch (error) {
+                console.error('Error deleting job:', error);
+                return false;
+            }
+        }
+
+        // Initialize storage
+        async function initStorage() {
+            const jobs = await fetchAllJobs();
+            if (!jobs || Object.keys(jobs).length === 0) {
+                // Create a default job
+                const defaultJob = createJob('Sample Job - Main Street');
+                await saveJobToServer(defaultJob);
+                currentJobId = defaultJob.id;
+            } else {
+                currentJobId = Object.keys(jobs)[0];
+            }
+            loadJobsList();
+        }
+
+        function getJobs() {
+            return jobsCache;
+        }
+
+        function createJob(name) {
+            const id = 'job_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const now = new Date();
+            now.setMinutes(now.getMinutes() - now.getTimezoneOffset());
+            
+            return {
+                id: id,
+                name: name,
+                startTime: now.toISOString().slice(0, 16),
+                segments: JSON.parse(JSON.stringify(defaultSegments)),
+                nextSegmentId: 6,
+                delays: [],
+                createdAt: new Date().toISOString(),
+                lastUpdated: new Date().toISOString()
+            };
+        }
+
+        async function saveJob(job) {
+            job.lastUpdated = new Date().toISOString();
+            await saveJobToServer(job);
+        }
+
+        function getCurrentJob() {
+            return jobsCache[currentJobId] || null;
+        }
+
+        async function loadJobsList() {
+            const jobs = getJobs();
+            const select = document.getElementById('jobSelect');
+            select.innerHTML = '<option value="">Select a job...</option>';
+            
+            Object.values(jobs).forEach(job => {
+                const option = document.createElement('option');
+                option.value = job.id;
+                option.textContent = job.name;
+                if (job.id === currentJobId) {
+                    option.selected = true;
+                }
+                select.appendChild(option);
+            });
+        }
+
+        async function createNewJob() {
+            const name = prompt('Enter job name:', 'New Road Surfacing Job');
+            if (name) {
+                const job = createJob(name);
+                await saveJob(job);
+                currentJobId = job.id;
+                loadJobsList();
+                loadCurrentJob();
+            }
+        }
+
+        function switchJob() {
+            const select = document.getElementById('jobSelect');
+            currentJobId = select.value;
+            if (currentJobId) {
+                loadCurrentJob();
+            }
+        }
+
+        async function loadCurrentJob() {
+            // Fetch fresh data from server
+            const job = await fetchJob(currentJobId);
+            if (!job) return;
+
+            document.getElementById('jobName').value = job.name;
+            document.getElementById('startTime').value = job.startTime;
+            document.getElementById('displayJobName').textContent = job.name;
+            
+            updateDisplay();
+        }
+
+        async function updateJobName() {
+            const job = getCurrentJob();
+            if (!job) return;
+            
+            job.name = document.getElementById('jobName').value;
+            await saveJob(job);
+            loadJobsList();
+            document.getElementById('displayJobName').textContent = job.name;
+        }
+
+        async function updateStartTime() {
+            const job = getCurrentJob();
+            if (!job) return;
+            
+            job.startTime = document.getElementById('startTime').value;
+            await saveJob(job);
+            calculateTimes();
+        }
+
+        // Check URL parameters for view mode
+        function checkViewMode() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const viewJobId = urlParams.get('job');
+            
+            if (viewJobId) {
+                isViewMode = true;
+                currentJobId = viewJobId;
+                document.body.classList.add('view-mode');
+                document.getElementById('readOnlyBanner').style.display = 'block';
+                
+                // Start polling for updates
+                startSyncPolling();
+            }
+        }
+
+        function startSyncPolling() {
+            // Poll for updates every 2 seconds
+            syncInterval = setInterval(async () => {
+                await loadCurrentJob();
+            }, 2000);
+        }
+
+        function showSyncIndicator() {
+            const indicator = document.getElementById('syncIndicator');
+            indicator.classList.add('syncing');
+            indicator.querySelector('span:last-child').textContent = 'Syncing...';
+            
+            setTimeout(() => {
+                indicator.classList.remove('syncing');
+                indicator.querySelector('span:last-child').textContent = 'Synced';
+            }, 500);
+        }
+
+        function toggleContactInfo() {
+            const contactBox = document.getElementById('contactInfoBox');
+            if (contactBox.style.display === 'none') {
+                contactBox.style.display = 'block';
+            } else {
+                contactBox.style.display = 'none';
+            }
+        }
+
+        function checkJobCompletion() {
+            const job = getCurrentJob();
+            if (!job) return false;
+
+            const allCompleted = job.segments.every(s => s.status === 'completed');
+            
+            // In view mode, show completion page if all segments are done
+            if (isViewMode && allCompleted) {
+                document.getElementById('completionPage').classList.add('active');
+                return true;
+            } else {
+                document.getElementById('completionPage').classList.remove('active');
+                return false;
+            }
+        }
+
+        function calculateOverdueSegments() {
+            const job = getCurrentJob();
+            if (!job || !job.startTime) return;
+
+            const startTime = new Date(job.startTime);
+            const currentTime = new Date();
+            const elapsedMinutes = (currentTime - startTime) / (1000 * 60);
+
+            // Calculate total delays that affect the schedule
+            const totalDelayMinutes = job.delays ? job.delays.reduce((sum, delay) => sum + delay.minutes, 0) : 0;
+
+            let cumulativeTime = 0;
+
+            job.segments.forEach((segment) => {
+                // Calculate delays specific to this segment
+                const segmentDelays = job.delays ? job.delays.filter(d => d.segmentId === segment.id).reduce((sum, d) => sum + d.minutes, 0) : 0;
+                
+                const segmentEndTime = cumulativeTime + segment.duration + segmentDelays;
+                
+                // Adjust for global delays (delays applied to all segments)
+                const globalDelays = job.delays ? job.delays.filter(d => !d.segmentId).reduce((sum, d) => sum + d.minutes, 0) : 0;
+                const adjustedEndTime = segmentEndTime + globalDelays;
+                
+                // If segment is not completed and current time has passed its scheduled end time (accounting for delays)
+                if (segment.status !== 'completed' && elapsedMinutes > adjustedEndTime) {
+                    segment.displayStatus = 'overdue';
+                } else {
+                    segment.displayStatus = segment.status;
+                }
+
+                cumulativeTime = segmentEndTime;
+            });
+        }
+
+        function drawProgressCircle() {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            calculateOverdueSegments();
+
+            const svg = document.getElementById('segments');
+            svg.innerHTML = '';
+
+            const centerX = 200;
+            const centerY = 200;
+            const radius = 150;
+            const totalSegments = job.segments.length;
+            const anglePerSegment = (2 * Math.PI) / totalSegments;
+
+            job.segments.forEach((segment, index) => {
+                const startAngle = index * anglePerSegment;
+                const endAngle = (index + 1) * anglePerSegment;
+
+                const x1 = centerX + radius * Math.cos(startAngle);
+                const y1 = centerY + radius * Math.sin(startAngle);
+                const x2 = centerX + radius * Math.cos(endAngle);
+                const y2 = centerY + radius * Math.sin(endAngle);
+
+                const largeArcFlag = anglePerSegment > Math.PI ? 1 : 0;
+
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                const d = [
+                    `M ${centerX} ${centerY}`,
+                    `L ${x1} ${y1}`,
+                    `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+                    'Z'
+                ].join(' ');
+
+                const displayStatus = segment.displayStatus || segment.status;
+                path.setAttribute('d', d);
+                path.setAttribute('fill', colors[displayStatus]);
+                path.setAttribute('class', `segment ${displayStatus}`);
+                path.setAttribute('data-id', segment.id);
+                path.style.stroke = 'white';
+
+                if (!isViewMode) {
+                    path.addEventListener('click', () => openEditModal(segment.id));
+                }
+
+                const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
+                const statusText = displayStatus === 'overdue' ? 'OVERDUE' : displayStatus;
+                title.textContent = `${segment.name} - ${segment.duration}min - ${statusText}`;
+                path.appendChild(title);
+
+                svg.appendChild(path);
+            });
+        }
+
+        function updateProgress() {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            const completedSegments = job.segments.filter(s => s.status === 'completed').length;
+            const percentage = Math.round((completedSegments / job.segments.length) * 100);
+            document.getElementById('overallProgress').textContent = percentage + '%';
+        }
+
+        function calculateTimes() {
+            const job = getCurrentJob();
+            if (!job || !job.startTime) {
+                document.getElementById('displayStartTime').textContent = 'Not set';
+                document.getElementById('estimatedEnd').textContent = 'Not calculated';
+                document.getElementById('totalDuration').textContent = '0 mins';
+                document.getElementById('delayRow').style.display = 'none';
+                return;
+            }
+
+            const startTime = new Date(job.startTime);
+            document.getElementById('displayStartTime').textContent = startTime.toLocaleString();
+
+            let totalMinutes = 0;
+            let remainingMinutes = 0;
+
+            job.segments.forEach(segment => {
+                totalMinutes += segment.duration;
+                if (segment.status === 'in-progress' || segment.status === 'pending') {
+                    remainingMinutes += segment.duration;
+                }
+            });
+
+            // Calculate total delays
+            const totalDelayMinutes = job.delays ? job.delays.reduce((sum, delay) => sum + delay.minutes, 0) : 0;
+            
+            if (totalDelayMinutes > 0) {
+                document.getElementById('delayRow').style.display = 'flex';
+                document.getElementById('totalDelays').textContent = `+${totalDelayMinutes} mins`;
+            } else {
+                document.getElementById('delayRow').style.display = 'none';
+            }
+
+            const totalWithDelays = totalMinutes + totalDelayMinutes;
+            const endTime = new Date(startTime.getTime() + totalWithDelays * 60000);
+            document.getElementById('estimatedEnd').textContent = endTime.toLocaleString();
+            document.getElementById('totalDuration').textContent = totalMinutes + ' mins' + (totalDelayMinutes > 0 ? ` (+${totalDelayMinutes} delay)` : '');
+        }
+
+        function updateCurrentTime() {
+            const now = new Date();
+            document.getElementById('currentTime').textContent = now.toLocaleTimeString();
+        }
+
+        function renderSegmentsList() {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            calculateOverdueSegments();
+
+            const list = document.getElementById('segmentsList');
+            list.innerHTML = '';
+
+            // Render bulk complete buttons
+            if (!isViewMode) {
+                renderBulkCompleteButtons();
+            }
+
+            job.segments.forEach(segment => {
+                const displayStatus = segment.displayStatus || segment.status;
+                const item = document.createElement('div');
+                item.className = `segment-item ${displayStatus}`;
+                
+                // Calculate delays for this segment
+                const segmentDelays = job.delays ? job.delays.filter(d => d.segmentId === segment.id) : [];
+                const segmentDelayMinutes = segmentDelays.reduce((sum, d) => sum + d.minutes, 0);
+                
+                const editButtons = !isViewMode ? `
+                    <div class="segment-actions">
+                        <button class="btn-sm btn-edit" onclick="openEditModal(${segment.id})">✏️ Edit</button>
+                        ${segment.status === 'pending' ? 
+                            `<button class="btn-sm btn-complete" onclick="markComplete(${segment.id})">✓ Mark Complete</button>` : 
+                            segment.status === 'in-progress' ?
+                            `<button class="btn-sm btn-complete" onclick="markComplete(${segment.id})">✓ Complete</button>
+                             <button class="btn-sm btn-reset" onclick="markPending(${segment.id})">↺ Reset</button>` :
+                            `<button class="btn-sm btn-reset" onclick="markPending(${segment.id})">↺ Undo</button>`
+                        }
+                    </div>
+                ` : '';
+
+                const statusLabel = displayStatus === 'overdue' ? 
+                    `<div class="segment-status overdue">⚠️ OVERDUE</div>` :
+                    `<div class="segment-status ${displayStatus}">
+                        ${displayStatus.replace('-', ' ').toUpperCase()}
+                    </div>`;
+
+                const delayBadge = segmentDelayMinutes > 0 ? 
+                    `<span class="delay-badge">+${segmentDelayMinutes}min delay</span>` : '';
+
+                item.innerHTML = `
+                    <div class="segment-header">
+                        <div class="segment-name">${segment.name}${delayBadge}</div>
+                        ${statusLabel}
+                    </div>
+                    <div class="segment-details">
+                        <div class="segment-detail">
+                            ⏱️ Duration: ${segment.duration} mins
+                        </div>
+                    </div>
+                    ${editButtons}
+                `;
+
+                list.appendChild(item);
+            });
+        }
+
+        function renderBulkCompleteButtons() {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            const container = document.getElementById('bulkCompleteButtons');
+            container.innerHTML = '';
+
+            // Create a button for each segment to complete up to that point
+            job.segments.forEach((segment, index) => {
+                const button = document.createElement('button');
+                button.className = 'quick-complete';
+                button.textContent = `✓ Up to: ${segment.name}`;
+                button.onclick = () => completeUpTo(index);
+                
+                // Highlight if all segments up to this point are completed
+                const allCompletedUpTo = job.segments.slice(0, index + 1).every(s => s.status === 'completed');
+                if (allCompletedUpTo) {
+                    button.classList.add('active');
+                }
+                
+                container.appendChild(button);
+            });
+
+            // Add "Complete All" button
+            const completeAllBtn = document.createElement('button');
+            completeAllBtn.className = 'quick-complete';
+            completeAllBtn.textContent = '✓ Complete All';
+            completeAllBtn.style.borderColor = '#17a2b8';
+            completeAllBtn.style.color = '#17a2b8';
+            completeAllBtn.onclick = completeAll;
+            
+            const allCompleted = job.segments.every(s => s.status === 'completed');
+            if (allCompleted) {
+                completeAllBtn.classList.add('active');
+                completeAllBtn.style.background = '#17a2b8';
+            }
+            
+            container.appendChild(completeAllBtn);
+        }
+
+        async function completeUpTo(index) {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            // Mark all segments up to and including this index as completed
+            job.segments.forEach((segment, i) => {
+                if (i <= index) {
+                    segment.status = 'completed';
+                } else if (i === index + 1) {
+                    // Mark the next one as in-progress
+                    segment.status = 'in-progress';
+                }
+            });
+
+            await saveJob(job);
+            updateDisplay();
+        }
+
+        async function completeAll() {
+            if (confirm('Mark all segments as completed?')) {
+                const job = getCurrentJob();
+                if (!job) return;
+
+                job.segments.forEach(segment => {
+                    segment.status = 'completed';
+                });
+
+                await saveJob(job);
+                updateDisplay();
+            }
+        }
+
+        function addDelay() {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            // Populate segment dropdown
+            const select = document.getElementById('delaySegment');
+            select.innerHTML = '<option value="">All remaining segments</option>';
+            
+            job.segments.forEach(segment => {
+                if (segment.status !== 'completed') {
+                    const option = document.createElement('option');
+                    option.value = segment.id;
+                    option.textContent = segment.name;
+                    select.appendChild(option);
+                }
+            });
+
+            // Clear inputs
+            document.getElementById('delayMinutes').value = '15';
+            document.getElementById('delayReason').value = '';
+
+            // Render delay history
+            renderDelayHistory();
+
+            document.getElementById('delayModal').classList.add('active');
+        }
+
+        function closeDelayModal() {
+            document.getElementById('delayModal').classList.remove('active');
+        }
+
+        async function saveDelay() {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            const minutes = parseInt(document.getElementById('delayMinutes').value);
+            const reason = document.getElementById('delayReason').value;
+            const segmentId = document.getElementById('delaySegment').value;
+
+            if (!minutes || minutes <= 0) {
+                alert('Please enter a valid delay duration');
+                return;
+            }
+
+            if (!job.delays) {
+                job.delays = [];
+            }
+
+            const delay = {
+                id: Date.now(),
+                minutes: minutes,
+                reason: reason || 'No reason specified',
+                segmentId: segmentId ? parseInt(segmentId) : null,
+                timestamp: new Date().toISOString()
+            };
+
+            job.delays.push(delay);
+            await saveJob(job);
+            updateDisplay();
+            renderDelayHistory();
+
+            // Clear form
+            document.getElementById('delayMinutes').value = '15';
+            document.getElementById('delayReason').value = '';
+        }
+
+        function renderDelayHistory() {
+            const job = getCurrentJob();
+            if (!job || !job.delays || job.delays.length === 0) {
+                document.getElementById('delayList').innerHTML = '<p style="color: #999; font-size: 0.9rem;">No delays recorded</p>';
+                return;
+            }
+
+            const list = document.getElementById('delayList');
+            list.innerHTML = '';
+
+            // Sort delays by timestamp (newest first)
+            const sortedDelays = [...job.delays].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+            sortedDelays.forEach(delay => {
+                const segmentName = delay.segmentId ? 
+                    job.segments.find(s => s.id === delay.segmentId)?.name : 
+                    'All segments';
+
+                const item = document.createElement('div');
+                item.style.cssText = 'background: #f8f9fa; padding: 10px; border-radius: 8px; margin-bottom: 8px; font-size: 0.9rem;';
+                item.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: start;">
+                        <div>
+                            <strong style="color: #dc3545;">+${delay.minutes} mins</strong> - ${segmentName}
+                            <br>
+                            <span style="color: #666; font-size: 0.85rem;">${delay.reason}</span>
+                            <br>
+                            <span style="color: #999; font-size: 0.8rem;">${new Date(delay.timestamp).toLocaleString()}</span>
+                        </div>
+                        <button class="btn-sm" style="background: #dc3545; color: white; padding: 4px 8px;" onclick="removeDelay(${delay.id})">✕</button>
+                    </div>
+                `;
+                list.appendChild(item);
+            });
+        }
+
+        async function removeDelay(delayId) {
+            if (confirm('Remove this delay?')) {
+                const job = getCurrentJob();
+                if (!job) return;
+
+                job.delays = job.delays.filter(d => d.id !== delayId);
+                await saveJob(job);
+                updateDisplay();
+                renderDelayHistory();
+            }
+        }
+
+        async function addSegment() {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            const newSegment = {
+                id: job.nextSegmentId++,
+                name: `New Segment ${job.nextSegmentId - 6}`,
+                duration: 30,
+                status: 'pending'
+            };
+            job.segments.push(newSegment);
+            await saveJob(job);
+            updateDisplay();
+        }
+
+        function openEditModal(id) {
+            if (isViewMode) return;
+
+            const job = getCurrentJob();
+            editingSegmentId = id;
+            const segment = job.segments.find(s => s.id === id);
+            
+            document.getElementById('editName').value = segment.name;
+            document.getElementById('editDuration').value = segment.duration;
+            document.getElementById('editModal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('editModal').classList.remove('active');
+            editingSegmentId = null;
+        }
+
+        async function saveSegment() {
+            const job = getCurrentJob();
+            const segment = job.segments.find(s => s.id === editingSegmentId);
+            segment.name = document.getElementById('editName').value || segment.name;
+            segment.duration = parseInt(document.getElementById('editDuration').value) || segment.duration;
+            
+            await saveJob(job);
+            closeModal();
+            updateDisplay();
+        }
+
+        async function deleteSegment() {
+            if (confirm('Are you sure you want to delete this segment?')) {
+                const job = getCurrentJob();
+                job.segments = job.segments.filter(s => s.id !== editingSegmentId);
+                await saveJob(job);
+                closeModal();
+                updateDisplay();
+            }
+        }
+
+        async function markComplete(id) {
+            const job = getCurrentJob();
+            const segment = job.segments.find(s => s.id === id);
+            segment.status = 'completed';
+            
+            // Auto-progress
+            const firstPending = job.segments.find(s => s.status === 'pending');
+            if (firstPending) {
+                firstPending.status = 'in-progress';
+            }
+            
+            await saveJob(job);
+            updateDisplay();
+        }
+
+        async function markPending(id) {
+            const job = getCurrentJob();
+            const segment = job.segments.find(s => s.id === id);
+            segment.status = 'pending';
+            await saveJob(job);
+            updateDisplay();
+        }
+
+        async function resetJob() {
+            if (confirm('Are you sure you want to reset all segments to pending?')) {
+                const job = getCurrentJob();
+                job.segments.forEach(s => s.status = 'pending');
+                if (job.segments.length > 0) {
+                    job.segments[0].status = 'in-progress';
+                }
+                await saveJob(job);
+                updateDisplay();
+            }
+        }
+
+        function showQRCode() {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            const baseUrl = window.location.origin + window.location.pathname;
+            const shareUrl = `${baseUrl}?job=${job.id}`;
+            
+            document.getElementById('shareUrl').value = shareUrl;
+            
+            // Clear previous QR code
+            const qrContainer = document.getElementById('qrcode');
+            qrContainer.innerHTML = '';
+            
+            // Generate new QR code
+            new QRCode(qrContainer, {
+                text: shareUrl,
+                width: 200,
+                height: 200,
+                colorDark: '#667eea',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
+            
+            document.getElementById('qrModal').classList.add('active');
+        }
+
+        function closeQRModal() {
+            document.getElementById('qrModal').classList.remove('active');
+        }
+
+        function copyUrl() {
+            const input = document.getElementById('shareUrl');
+            input.select();
+            document.execCommand('copy');
+            
+            const btn = event.target;
+            const originalText = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(() => {
+                btn.textContent = originalText;
+            }, 2000);
+        }
+
+        function updateDisplay() {
+            checkJobCompletion();
+            drawProgressCircle();
+            updateProgress();
+            calculateTimes();
+            renderSegmentsList();
+        }
+
+        // Initialize
+        checkViewMode();
+        initStorage().then(() => {
+            loadCurrentJob();
+        });
+        setInterval(updateCurrentTime, 1000);
+        updateCurrentTime();
+    </script>
+</body>
+</html>
