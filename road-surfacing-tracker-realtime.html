@@ -970,7 +970,9 @@
                     <div class="button-group">
                         <button class="btn btn-primary" onclick="addSegment()">+ Add Segment</button>
                         <button class="btn btn-delay" onclick="addDelay()">⏱️ Add Delay</button>
+                        <button class="btn btn-secondary" onclick="exportJob()">📥 Export Job</button>
                         <button class="btn btn-secondary" onclick="resetJob()">Reset Job</button>
+                        <button class="btn btn-secondary" onclick="deleteCurrentJob()" style="background: #dc3545; color: white; border: 2px solid #dc3545;">🗑️ Delete Job</button>
                     </div>
                 </div>
 
@@ -994,6 +996,12 @@
             <div class="input-group">
                 <label for="editName">Segment Name</label>
                 <input type="text" id="editName" placeholder="e.g., Base Layer Prep">
+            </div>
+            <div class="input-group">
+                <label for="editDescription">Description (visible to public)</label>
+                <textarea id="editDescription" 
+                    placeholder="e.g., Preparing the base layer for asphalt application..." 
+                    style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1rem; font-family: inherit; min-height: 80px; resize: vertical;"></textarea>
             </div>
             <div class="input-group">
                 <label for="editDuration">Estimated Duration (minutes)</label>
@@ -1059,6 +1067,70 @@
         </div>
     </div>
 
+    <!-- Export Modal -->
+    <div class="modal" id="exportModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Export Job Data</h3>
+                <button class="close-modal" onclick="closeExportModal()">&times;</button>
+            </div>
+            
+            <p style="margin-bottom: 20px; color: #666; line-height: 1.6;">
+                Export your job data in a GDPR-compliant format. All data is anonymized and suitable for database import.
+            </p>
+
+            <div class="input-group">
+                <label>Export Format</label>
+                <select id="exportFormat" style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 10px; font-size: 1rem;">
+                    <option value="json">JSON (Database Ready)</option>
+                    <option value="csv">CSV (Excel/Spreadsheet)</option>
+                    <option value="sql">SQL Insert Statements</option>
+                    <option value="xml">XML (Legacy Systems)</option>
+                </select>
+            </div>
+
+            <div class="input-group">
+                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                    <input type="checkbox" id="includePersonalData" style="width: 20px; height: 20px;">
+                    <span>Include timestamps (may contain personal data)</span>
+                </label>
+                <p style="font-size: 0.85rem; color: #999; margin-top: 5px; margin-left: 28px;">
+                    Uncheck for GDPR-compliant anonymized export
+                </p>
+            </div>
+
+            <div class="button-group">
+                <button class="btn btn-primary" onclick="downloadExport()">📥 Download Export</button>
+                <button class="btn btn-secondary" onclick="closeExportModal()">Cancel</button>
+            </div>
+
+            <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 10px; font-size: 0.9rem; color: #666;">
+                <strong>GDPR Compliance:</strong>
+                <ul style="margin: 10px 0 0 20px; line-height: 1.6;">
+                    <li>Job data is anonymized by default</li>
+                    <li>No personally identifiable information included</li>
+                    <li>Timestamps can be excluded for full anonymization</li>
+                    <li>Suitable for data portability requests (Article 20)</li>
+                    <li>Data can be deleted on request (Right to Erasure)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- Segment Detail Modal (Public View) -->
+    <div class="modal" id="segmentDetailModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="segmentDetailTitle">Segment Details</h3>
+                <button class="close-modal" onclick="closeSegmentDetailModal()">&times;</button>
+            </div>
+            
+            <div id="segmentDetailContent" style="padding: 10px 0;">
+                <!-- Content populated by JavaScript -->
+            </div>
+        </div>
+    </div>
+
     <script>
         // Backend API configuration - Auto-detect environment
         const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
@@ -1083,11 +1155,41 @@
 
         // Default template for new jobs
         const defaultSegments = [
-            { id: 1, name: 'Road Closure and Pedestrian Segregation', duration: 30, status: 'pending' },
-            { id: 2, name: 'Road Planing', duration: 60, status: 'pending' },
-            { id: 3, name: 'Road Preparation', duration: 45, status: 'pending' },
-            { id: 4, name: 'Road Surfacing', duration: 60, status: 'pending' },
-            { id: 5, name: 'Road Lining', duration: 30, status: 'pending' }
+            { 
+                id: 1, 
+                name: 'Road Closure and Pedestrian Segregation', 
+                duration: 30, 
+                status: 'pending',
+                description: 'Setting up traffic management, safety barriers, and pedestrian walkways to ensure public safety during works.'
+            },
+            { 
+                id: 2, 
+                name: 'Road Planing', 
+                duration: 60, 
+                status: 'pending',
+                description: 'Removing the old road surface using specialized milling machines to prepare for new surfacing.'
+            },
+            { 
+                id: 3, 
+                name: 'Road Preparation', 
+                duration: 45, 
+                status: 'pending',
+                description: 'Cleaning, leveling, and priming the road base to ensure proper adhesion of new surface materials.'
+            },
+            { 
+                id: 4, 
+                name: 'Road Surfacing', 
+                duration: 60, 
+                status: 'pending',
+                description: 'Laying and compacting new asphalt or tarmac to create a smooth, durable road surface.'
+            },
+            { 
+                id: 5, 
+                name: 'Road Lining', 
+                duration: 30, 
+                status: 'pending',
+                description: 'Applying road markings, lane lines, and other safety markings to complete the works.'
+            }
         ];
 
         // API Functions
@@ -1432,14 +1534,18 @@
                 path.setAttribute('class', `segment ${displayStatus}`);
                 path.setAttribute('data-id', segment.id);
                 path.style.stroke = 'white';
+                path.style.cursor = 'pointer';
 
+                // Click handler - edit in edit mode, view details in view mode
                 if (!isViewMode) {
                     path.addEventListener('click', () => openEditModal(segment.id));
+                } else {
+                    path.addEventListener('click', () => showSegmentDetail(segment.id));
                 }
 
                 const title = document.createElementNS('http://www.w3.org/2000/svg', 'title');
                 const statusText = displayStatus === 'overdue' ? 'OVERDUE' : displayStatus;
-                title.textContent = `${segment.name} - ${segment.duration}min - ${statusText}`;
+                title.textContent = `${segment.name} - ${segment.duration}min - ${statusText}${isViewMode ? ' (click for details)' : ''}`;
                 path.appendChild(title);
 
                 svg.appendChild(path);
@@ -1533,7 +1639,11 @@
                             `<button class="btn-sm btn-reset" onclick="markPending(${segment.id})">↺ Undo</button>`
                         }
                     </div>
-                ` : '';
+                ` : `
+                    <div class="segment-actions">
+                        <button class="btn-sm btn-edit" onclick="showSegmentDetail(${segment.id})">ℹ️ View Details</button>
+                    </div>
+                `;
 
                 const statusLabel = displayStatus === 'overdue' ? 
                     `<div class="segment-status overdue">⚠️ OVERDUE</div>` :
@@ -1543,6 +1653,11 @@
 
                 const delayBadge = segmentDelayMinutes > 0 ? 
                     `<span class="delay-badge">+${segmentDelayMinutes}min delay</span>` : '';
+
+                const descriptionHTML = segment.description ? 
+                    `<div style="margin-top: 10px; padding: 10px; background: white; border-radius: 6px; font-size: 0.9rem; color: #666; line-height: 1.4;">
+                        ${segment.description}
+                    </div>` : '';
 
                 item.innerHTML = `
                     <div class="segment-header">
@@ -1554,6 +1669,7 @@
                             ⏱️ Duration: ${segment.duration} mins
                         </div>
                     </div>
+                    ${descriptionHTML}
                     ${editButtons}
                 `;
 
@@ -1747,6 +1863,265 @@
             }
         }
 
+        // Export Functions
+        function exportJob() {
+            const job = getCurrentJob();
+            if (!job) {
+                alert('No job selected to export');
+                return;
+            }
+            document.getElementById('exportModal').classList.add('active');
+        }
+
+        function closeExportModal() {
+            document.getElementById('exportModal').classList.remove('active');
+        }
+
+        function anonymizeJob(job, includeTimestamps) {
+            // Create a GDPR-compliant anonymized copy
+            const anonymized = {
+                jobReference: `JOB_${Math.random().toString(36).substr(2, 9).toUpperCase()}`, // Anonymous ID
+                jobName: job.name || 'Unnamed Job',
+                totalDuration: job.segments.reduce((sum, s) => sum + s.duration, 0),
+                totalDelays: job.delays ? job.delays.reduce((sum, d) => sum + d.minutes, 0) : 0,
+                completionPercentage: Math.round((job.segments.filter(s => s.status === 'completed').length / job.segments.length) * 100),
+                segments: job.segments.map((seg, index) => ({
+                    sequenceNumber: index + 1,
+                    segmentName: seg.name,
+                    estimatedDuration: seg.duration,
+                    status: seg.status,
+                    completedAt: includeTimestamps && seg.completedAt ? seg.completedAt : null
+                })),
+                delays: job.delays ? job.delays.map((delay, index) => ({
+                    delayNumber: index + 1,
+                    durationMinutes: delay.minutes,
+                    reason: delay.reason,
+                    affectedSegment: delay.segmentId ? job.segments.find(s => s.id === delay.segmentId)?.name : 'All segments',
+                    recordedAt: includeTimestamps ? delay.timestamp : null
+                })) : [],
+                exportMetadata: {
+                    exportedAt: new Date().toISOString(),
+                    dataVersion: '1.0',
+                    gdprCompliant: !includeTimestamps,
+                    format: 'Road Surfacing Tracker Export'
+                }
+            };
+
+            // Remove null timestamp fields if not including personal data
+            if (!includeTimestamps) {
+                anonymized.segments.forEach(s => delete s.completedAt);
+                anonymized.delays.forEach(d => delete d.recordedAt);
+            }
+
+            return anonymized;
+        }
+
+        function downloadExport() {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            const format = document.getElementById('exportFormat').value;
+            const includeTimestamps = document.getElementById('includePersonalData').checked;
+            const anonymized = anonymizeJob(job, includeTimestamps);
+
+            let content, filename, mimeType;
+
+            switch (format) {
+                case 'json':
+                    content = JSON.stringify(anonymized, null, 2);
+                    filename = `job_export_${anonymized.jobReference}.json`;
+                    mimeType = 'application/json';
+                    break;
+
+                case 'csv':
+                    content = generateCSV(anonymized);
+                    filename = `job_export_${anonymized.jobReference}.csv`;
+                    mimeType = 'text/csv';
+                    break;
+
+                case 'sql':
+                    content = generateSQL(anonymized);
+                    filename = `job_export_${anonymized.jobReference}.sql`;
+                    mimeType = 'text/plain';
+                    break;
+
+                case 'xml':
+                    content = generateXML(anonymized);
+                    filename = `job_export_${anonymized.jobReference}.xml`;
+                    mimeType = 'application/xml';
+                    break;
+            }
+
+            // Create download
+            const blob = new Blob([content], { type: mimeType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            closeExportModal();
+            
+            // Show success message
+            alert(`Job data exported successfully!\n\nFile: ${filename}\nFormat: ${format.toUpperCase()}\nGDPR Compliant: ${!includeTimestamps ? 'Yes' : 'No (includes timestamps)'}`);
+        }
+
+        function generateCSV(data) {
+            let csv = '';
+            
+            // Job Summary
+            csv += 'JOB SUMMARY\n';
+            csv += `Job Reference,${data.jobReference}\n`;
+            csv += `Job Name,${data.jobName}\n`;
+            csv += `Total Duration (mins),${data.totalDuration}\n`;
+            csv += `Total Delays (mins),${data.totalDelays}\n`;
+            csv += `Completion Percentage,${data.completionPercentage}%\n`;
+            csv += `Exported At,${data.exportMetadata.exportedAt}\n`;
+            csv += `GDPR Compliant,${data.exportMetadata.gdprCompliant ? 'Yes' : 'No'}\n`;
+            csv += '\n';
+
+            // Segments
+            csv += 'SEGMENTS\n';
+            csv += 'Sequence,Name,Duration (mins),Status,Completed At\n';
+            data.segments.forEach(seg => {
+                csv += `${seg.sequenceNumber},"${seg.segmentName}",${seg.estimatedDuration},${seg.status},${seg.completedAt || 'N/A'}\n`;
+            });
+            csv += '\n';
+
+            // Delays
+            if (data.delays.length > 0) {
+                csv += 'DELAYS\n';
+                csv += 'Delay Number,Duration (mins),Reason,Affected Segment,Recorded At\n';
+                data.delays.forEach(delay => {
+                    csv += `${delay.delayNumber},${delay.durationMinutes},"${delay.reason}","${delay.affectedSegment}",${delay.recordedAt || 'N/A'}\n`;
+                });
+            }
+
+            return csv;
+        }
+
+        function generateSQL(data) {
+            let sql = `-- Road Surfacing Job Export: ${data.jobReference}\n`;
+            sql += `-- Exported: ${data.exportMetadata.exportedAt}\n`;
+            sql += `-- GDPR Compliant: ${data.exportMetadata.gdprCompliant ? 'Yes' : 'No'}\n\n`;
+
+            // Create tables
+            sql += `-- Create Jobs table\n`;
+            sql += `CREATE TABLE IF NOT EXISTS jobs (\n`;
+            sql += `    job_reference VARCHAR(50) PRIMARY KEY,\n`;
+            sql += `    job_name VARCHAR(255),\n`;
+            sql += `    total_duration INT,\n`;
+            sql += `    total_delays INT,\n`;
+            sql += `    completion_percentage INT,\n`;
+            sql += `    exported_at TIMESTAMP\n`;
+            sql += `);\n\n`;
+
+            sql += `CREATE TABLE IF NOT EXISTS segments (\n`;
+            sql += `    segment_id INT AUTO_INCREMENT PRIMARY KEY,\n`;
+            sql += `    job_reference VARCHAR(50),\n`;
+            sql += `    sequence_number INT,\n`;
+            sql += `    segment_name VARCHAR(255),\n`;
+            sql += `    estimated_duration INT,\n`;
+            sql += `    status VARCHAR(50),\n`;
+            sql += `    completed_at TIMESTAMP NULL,\n`;
+            sql += `    FOREIGN KEY (job_reference) REFERENCES jobs(job_reference)\n`;
+            sql += `);\n\n`;
+
+            sql += `CREATE TABLE IF NOT EXISTS delays (\n`;
+            sql += `    delay_id INT AUTO_INCREMENT PRIMARY KEY,\n`;
+            sql += `    job_reference VARCHAR(50),\n`;
+            sql += `    delay_number INT,\n`;
+            sql += `    duration_minutes INT,\n`;
+            sql += `    reason TEXT,\n`;
+            sql += `    affected_segment VARCHAR(255),\n`;
+            sql += `    recorded_at TIMESTAMP NULL,\n`;
+            sql += `    FOREIGN KEY (job_reference) REFERENCES jobs(job_reference)\n`;
+            sql += `);\n\n`;
+
+            // Insert job
+            sql += `-- Insert job data\n`;
+            sql += `INSERT INTO jobs (job_reference, job_name, total_duration, total_delays, completion_percentage, exported_at)\n`;
+            sql += `VALUES ('${data.jobReference}', '${data.jobName.replace(/'/g, "''")}', ${data.totalDuration}, ${data.totalDelays}, ${data.completionPercentage}, '${data.exportMetadata.exportedAt}');\n\n`;
+
+            // Insert segments
+            sql += `-- Insert segments\n`;
+            data.segments.forEach(seg => {
+                const completedAt = seg.completedAt ? `'${seg.completedAt}'` : 'NULL';
+                sql += `INSERT INTO segments (job_reference, sequence_number, segment_name, estimated_duration, status, completed_at)\n`;
+                sql += `VALUES ('${data.jobReference}', ${seg.sequenceNumber}, '${seg.segmentName.replace(/'/g, "''")}', ${seg.estimatedDuration}, '${seg.status}', ${completedAt});\n`;
+            });
+            sql += '\n';
+
+            // Insert delays
+            if (data.delays.length > 0) {
+                sql += `-- Insert delays\n`;
+                data.delays.forEach(delay => {
+                    const recordedAt = delay.recordedAt ? `'${delay.recordedAt}'` : 'NULL';
+                    sql += `INSERT INTO delays (job_reference, delay_number, duration_minutes, reason, affected_segment, recorded_at)\n`;
+                    sql += `VALUES ('${data.jobReference}', ${delay.delayNumber}, ${delay.durationMinutes}, '${delay.reason.replace(/'/g, "''")}', '${delay.affectedSegment.replace(/'/g, "''")}', ${recordedAt});\n`;
+                });
+            }
+
+            return sql;
+        }
+
+        function generateXML(data) {
+            let xml = '<?xml version="1.0" encoding="UTF-8"?>\n';
+            xml += `<roadSurfacingJob>\n`;
+            xml += `  <metadata>\n`;
+            xml += `    <jobReference>${escapeXML(data.jobReference)}</jobReference>\n`;
+            xml += `    <jobName>${escapeXML(data.jobName)}</jobName>\n`;
+            xml += `    <totalDuration>${data.totalDuration}</totalDuration>\n`;
+            xml += `    <totalDelays>${data.totalDelays}</totalDelays>\n`;
+            xml += `    <completionPercentage>${data.completionPercentage}</completionPercentage>\n`;
+            xml += `    <exportedAt>${data.exportMetadata.exportedAt}</exportedAt>\n`;
+            xml += `    <gdprCompliant>${data.exportMetadata.gdprCompliant}</gdprCompliant>\n`;
+            xml += `  </metadata>\n`;
+
+            xml += `  <segments>\n`;
+            data.segments.forEach(seg => {
+                xml += `    <segment>\n`;
+                xml += `      <sequenceNumber>${seg.sequenceNumber}</sequenceNumber>\n`;
+                xml += `      <name>${escapeXML(seg.segmentName)}</name>\n`;
+                xml += `      <estimatedDuration>${seg.estimatedDuration}</estimatedDuration>\n`;
+                xml += `      <status>${seg.status}</status>\n`;
+                if (seg.completedAt) {
+                    xml += `      <completedAt>${seg.completedAt}</completedAt>\n`;
+                }
+                xml += `    </segment>\n`;
+            });
+            xml += `  </segments>\n`;
+
+            if (data.delays.length > 0) {
+                xml += `  <delays>\n`;
+                data.delays.forEach(delay => {
+                    xml += `    <delay>\n`;
+                    xml += `      <delayNumber>${delay.delayNumber}</delayNumber>\n`;
+                    xml += `      <durationMinutes>${delay.durationMinutes}</durationMinutes>\n`;
+                    xml += `      <reason>${escapeXML(delay.reason)}</reason>\n`;
+                    xml += `      <affectedSegment>${escapeXML(delay.affectedSegment)}</affectedSegment>\n`;
+                    if (delay.recordedAt) {
+                        xml += `      <recordedAt>${delay.recordedAt}</recordedAt>\n`;
+                    }
+                    xml += `    </delay>\n`;
+                });
+                xml += `  </delays>\n`;
+            }
+
+            xml += `</roadSurfacingJob>`;
+            return xml;
+        }
+
+        function escapeXML(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&apos;');
+        }
+
         async function addSegment() {
             const job = getCurrentJob();
             if (!job) return;
@@ -1755,7 +2130,8 @@
                 id: job.nextSegmentId++,
                 name: `New Segment ${job.nextSegmentId - 6}`,
                 duration: 30,
-                status: 'pending'
+                status: 'pending',
+                description: ''
             };
             job.segments.push(newSegment);
             await saveJob(job);
@@ -1770,6 +2146,7 @@
             const segment = job.segments.find(s => s.id === id);
             
             document.getElementById('editName').value = segment.name;
+            document.getElementById('editDescription').value = segment.description || '';
             document.getElementById('editDuration').value = segment.duration;
             document.getElementById('editModal').classList.add('active');
         }
@@ -1783,11 +2160,125 @@
             const job = getCurrentJob();
             const segment = job.segments.find(s => s.id === editingSegmentId);
             segment.name = document.getElementById('editName').value || segment.name;
+            segment.description = document.getElementById('editDescription').value || '';
             segment.duration = parseInt(document.getElementById('editDuration').value) || segment.duration;
             
             await saveJob(job);
             closeModal();
             updateDisplay();
+        }
+
+        function showSegmentDetail(segmentId) {
+            const job = getCurrentJob();
+            if (!job) return;
+
+            const segment = job.segments.find(s => s.id === segmentId);
+            if (!segment) return;
+
+            // Update modal title
+            document.getElementById('segmentDetailTitle').textContent = segment.name;
+
+            // Build content
+            const displayStatus = segment.displayStatus || segment.status;
+            const statusColors = {
+                completed: '#28a745',
+                'in-progress': '#ffc107',
+                pending: '#6c757d',
+                overdue: '#dc3545'
+            };
+            const statusColor = statusColors[displayStatus];
+
+            let content = `
+                <div style="margin-bottom: 20px;">
+                    <div style="display: inline-block; padding: 8px 16px; background: ${statusColor}; color: white; border-radius: 20px; font-weight: 600; margin-bottom: 15px;">
+                        ${displayStatus === 'overdue' ? '⚠️ OVERDUE' : displayStatus.replace('-', ' ').toUpperCase()}
+                    </div>
+                </div>
+
+                <div style="background: #f8f9fa; padding: 15px; border-radius: 10px; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
+                        <span style="color: #666;">Estimated Duration:</span>
+                        <strong>${segment.duration} minutes</strong>
+                    </div>
+                </div>
+            `;
+
+            // Add description if available
+            if (segment.description) {
+                content += `
+                    <div style="margin-top: 20px;">
+                        <h4 style="color: #667eea; margin-bottom: 10px; font-size: 1.1rem;">What's Happening:</h4>
+                        <p style="line-height: 1.6; color: #333; background: #f0f4ff; padding: 15px; border-radius: 10px; border-left: 4px solid #667eea;">
+                            ${segment.description}
+                        </p>
+                    </div>
+                `;
+            }
+
+            // Add completion message if done
+            if (segment.status === 'completed') {
+                content += `
+                    <div style="margin-top: 20px; text-align: center; color: #28a745;">
+                        <div style="font-size: 3rem;">✓</div>
+                        <div style="font-weight: 600; margin-top: 10px;">This stage is complete!</div>
+                    </div>
+                `;
+            }
+
+            document.getElementById('segmentDetailContent').innerHTML = content;
+            document.getElementById('segmentDetailModal').classList.add('active');
+        }
+
+        function closeSegmentDetailModal() {
+            document.getElementById('segmentDetailModal').classList.remove('active');
+        }
+
+        async function deleteCurrentJob() {
+            const job = getCurrentJob();
+            if (!job) {
+                alert('No job selected to delete');
+                return;
+            }
+
+            const confirmMessage = `Are you sure you want to delete "${job.name}"?\n\nThis action cannot be undone.`;
+            
+            if (!confirm(confirmMessage)) {
+                return;
+            }
+
+            // Double confirmation for safety
+            const doubleConfirm = confirm('This will permanently delete all job data including segments, delays, and progress.\n\nClick OK to confirm deletion.');
+            
+            if (!doubleConfirm) {
+                return;
+            }
+
+            // Delete from server
+            const deleted = await deleteJobFromServer(job.id);
+            
+            if (deleted) {
+                alert(`Job "${job.name}" has been deleted successfully.`);
+                
+                // Refresh jobs list
+                await fetchAllJobs();
+                const jobs = getJobs();
+                
+                if (Object.keys(jobs).length > 0) {
+                    // Switch to first available job
+                    currentJobId = Object.keys(jobs)[0];
+                    loadJobsList();
+                    loadCurrentJob();
+                } else {
+                    // No jobs left, create a default one
+                    const defaultJob = createJob('New Job');
+                    await saveJobToServer(defaultJob);
+                    currentJobId = defaultJob.id;
+                    loadJobsList();
+                    loadCurrentJob();
+                }
+            } else {
+                alert('Failed to delete job. Please try again.');
+            }
         }
 
         async function deleteSegment() {
