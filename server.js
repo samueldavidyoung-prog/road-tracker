@@ -2,293 +2,299 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const url = require('url');
+const https = require('https');
 
-// Simple in-memory database with persistence
-class JobDatabase {
-    constructor() {
-        this.dbPath = path.join(__dirname, 'jobs.json');
-        this.jobs = this.loadJobs();
-        this.startCleanupScheduler();
-    }
+// ============================================================
+// SUPABASE CONFIG - Set these as environment variables on Render
+// SUPABASE_URL=https://xxxxxxxxxxxx.supabase.co
+// SUPABASE_KEY=your-anon-key-here
+// ============================================================
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
-    loadJobs() {
-        try {
-            if (fs.existsSync(this.dbPath)) {
-                const data = fs.readFileSync(this.dbPath, 'utf8');
-                return JSON.parse(data);
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+    console.error('❌ Missing SUPABASE_URL or SUPABASE_KEY environment variables!');
+    console.error('   Set them in Render → Your Service → Environment tab');
+    process.exit(1);
+}
+
+// Minimal Supabase REST API client (no npm packages needed)
+function supabaseRequest(method, endpoint, body = null) {
+    return new Promise((resolve, reject) => {
+        const urlObj = new URL(`${SUPABASE_URL}/rest/v1/${endpoint}`);
+
+        const options = {
+            hostname: urlObj.hostname,
+            path: urlObj.pathname + urlObj.search,
+            method: method,
+            headers: {
+                'apikey': SUPABASE_KEY,
+                'Authorization': `Bearer ${SUPABASE_KEY}`,
+                'Content-Type': 'application/json',
+                'Prefer': 'return=representation'
             }
-        } catch (error) {
-            console.error('Error loading jobs:', error);
+        };
+
+        const req = https.request(options, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                try {
+                    const parsed = data ? JSON.parse(data) : null;
+                    if (res.statusCode >= 400) {
+                        reject(new Error(`Supabase error ${res.statusCode}: ${data}`));
+                    } else {
+                        resolve(parsed);
+                    }
+                } catch (e) {
+                    resolve(data);
+                }
+            });
+        });
+
+        req.on('error', reject);
+        if (body) req.write(JSON.stringify(body));
+        req.end();
+    });
+}
+
+// ============================================================
+// DATABASE FUNCTIONS
+// ============================================================
+
+async function getAllJobs() {
+    try {
+        const rows = await supabaseRequest('GET', 'jobs?order=created_at.desc');
+        const jobs = {};
+        if (Array.isArray(rows)) {
+            rows.forEach(row => {
+                jobs[row.job_id] = rowToJob(row);
+            });
         }
+        return jobs;
+    } catch (err) {
+        console.error('getAllJobs error:', err.message);
         return {};
     }
+}
 
-    saveJobs() {
-        try {
-            fs.writeFileSync(this.dbPath, JSON.stringify(this.jobs, null, 2));
-        } catch (error) {
-            console.error('Error saving jobs:', error);
-        }
-    }
-
-    calculateEndTime(job) {
-        if (!job.startTime) return null;
-        
-        const startTime = new Date(job.startTime);
-        let totalMinutes = 0;
-        
-        job.segments.forEach(segment => {
-            totalMinutes += segment.duration;
-        });
-        
-        // Add delays
-        const totalDelayMinutes = job.delays ? 
-            job.delays.reduce((sum, delay) => sum + delay.minutes, 0) : 0;
-        
-        const endTime = new Date(startTime.getTime() + (totalMinutes + totalDelayMinutes) * 60000);
-        return endTime;
-    }
-
-    shouldDelete(job) {
-        const endTime = this.calculateEndTime(job);
-        if (!endTime) return false;
-        
-        // Delete 24 hours after estimated end time
-        const deletionTime = new Date(endTime.getTime() + (24 * 60 * 60 * 1000));
-        const now = new Date();
-        
-        return now >= deletionTime;
-    }
-
-    cleanup() {
-        let deletedCount = 0;
-        const jobIds = Object.keys(this.jobs);
-        
-        jobIds.forEach(jobId => {
-            if (this.shouldDelete(this.jobs[jobId])) {
-                console.log(`Deleting expired job: ${this.jobs[jobId].name} (${jobId})`);
-                delete this.jobs[jobId];
-                deletedCount++;
-            }
-        });
-        
-        if (deletedCount > 0) {
-            this.saveJobs();
-            console.log(`Cleanup complete: ${deletedCount} jobs deleted`);
-        }
-        
-        return deletedCount;
-    }
-
-    startCleanupScheduler() {
-        // Run cleanup every hour
-        setInterval(() => {
-            console.log('Running scheduled cleanup...');
-            this.cleanup();
-        }, 60 * 60 * 1000); // Every hour
-        
-        // Also run cleanup on startup
-        console.log('Running initial cleanup...');
-        this.cleanup();
-    }
-
-    getAllJobs() {
-        return this.jobs;
-    }
-
-    getJob(jobId) {
-        return this.jobs[jobId] || null;
-    }
-
-    createJob(job) {
-        this.jobs[job.id] = job;
-        this.saveJobs();
-        return job;
-    }
-
-    updateJob(jobId, job) {
-        if (this.jobs[jobId]) {
-            job.lastUpdated = new Date().toISOString();
-            this.jobs[jobId] = job;
-            this.saveJobs();
-            return job;
-        }
+async function getJob(jobId) {
+    try {
+        const rows = await supabaseRequest('GET', `jobs?job_id=eq.${encodeURIComponent(jobId)}`);
+        if (!Array.isArray(rows) || rows.length === 0) return null;
+        return rowToJob(rows[0]);
+    } catch (err) {
+        console.error('getJob error:', err.message);
         return null;
     }
+}
 
-    deleteJob(jobId) {
-        if (this.jobs[jobId]) {
-            delete this.jobs[jobId];
-            this.saveJobs();
-            return true;
-        }
+function rowToJob(row) {
+    return {
+        id: row.job_id,
+        name: row.name,
+        startTime: row.start_time,
+        segments: row.segments,
+        delays: row.delays || [],
+        nextSegmentId: row.next_segment_id,
+        createdAt: row.created_at,
+        lastUpdated: row.last_updated,
+        expiresAt: row.expires_at
+    };
+}
+
+function calculateExpiresAt(job) {
+    if (!job.startTime) return null;
+    const startTime = new Date(job.startTime);
+    let totalMinutes = 0;
+    if (Array.isArray(job.segments)) {
+        job.segments.forEach(s => { totalMinutes += s.duration || 0; });
+    }
+    const totalDelays = Array.isArray(job.delays)
+        ? job.delays.reduce((sum, d) => sum + (d.minutes || 0), 0)
+        : 0;
+    // Expires 24 hours after estimated end time
+    const expiresAt = new Date(startTime.getTime() + (totalMinutes + totalDelays + 24 * 60) * 60000);
+    return expiresAt.toISOString();
+}
+
+async function createJob(job) {
+    try {
+        const row = {
+            job_id: job.id,
+            name: job.name,
+            start_time: job.startTime,
+            segments: job.segments,
+            delays: job.delays || [],
+            next_segment_id: job.nextSegmentId || 6,
+            created_at: job.createdAt || new Date().toISOString(),
+            last_updated: new Date().toISOString(),
+            expires_at: calculateExpiresAt(job)
+        };
+        await supabaseRequest('POST', 'jobs', row);
+        return job;
+    } catch (err) {
+        console.error('createJob error:', err.message);
+        return null;
+    }
+}
+
+async function updateJob(jobId, job) {
+    try {
+        const row = {
+            name: job.name,
+            start_time: job.startTime,
+            segments: job.segments,
+            delays: job.delays || [],
+            next_segment_id: job.nextSegmentId || 6,
+            last_updated: new Date().toISOString(),
+            expires_at: calculateExpiresAt(job)
+        };
+        await supabaseRequest('PATCH', `jobs?job_id=eq.${encodeURIComponent(jobId)}`, row);
+        return { ...job, lastUpdated: row.last_updated };
+    } catch (err) {
+        console.error('updateJob error:', err.message);
+        return null;
+    }
+}
+
+async function deleteJob(jobId) {
+    try {
+        await supabaseRequest('DELETE', `jobs?job_id=eq.${encodeURIComponent(jobId)}`);
+        return true;
+    } catch (err) {
+        console.error('deleteJob error:', err.message);
         return false;
     }
 }
 
-const db = new JobDatabase();
+async function cleanupExpiredJobs() {
+    try {
+        const now = new Date().toISOString();
+        await supabaseRequest('DELETE', `jobs?expires_at=lt.${now}&expires_at=not.is.null`);
+        console.log(`🧹 Cleanup ran at ${now}`);
+    } catch (err) {
+        console.error('Cleanup error:', err.message);
+    }
+}
 
-// CORS headers
+// Run cleanup every hour
+setInterval(cleanupExpiredJobs, 60 * 60 * 1000);
+cleanupExpiredJobs();
+
+// ============================================================
+// HTTP SERVER
+// ============================================================
+
 const setCORSHeaders = (res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 };
 
-// Get MIME type for file
 const getMimeType = (filepath) => {
     const ext = path.extname(filepath).toLowerCase();
-    const mimeTypes = {
-        '.html': 'text/html',
-        '.js': 'text/javascript',
-        '.css': 'text/css',
-        '.json': 'application/json',
-        '.png': 'image/png',
-        '.jpg': 'image/jpeg',
-        '.gif': 'image/gif',
-        '.svg': 'image/svg+xml',
-    };
-    return mimeTypes[ext] || 'application/octet-stream';
+    return { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' }[ext] || 'text/plain';
 };
 
-// Serve static files
 const serveStaticFile = (filepath, res) => {
     fs.readFile(filepath, (err, data) => {
-        if (err) {
-            res.writeHead(404, { 'Content-Type': 'text/plain' });
-            res.end('404 Not Found');
-            return;
-        }
+        if (err) { res.writeHead(404); res.end('Not found'); return; }
         res.writeHead(200, { 'Content-Type': getMimeType(filepath) });
         res.end(data);
     });
 };
 
-// Simple router
-const server = http.createServer((req, res) => {
+const readBody = (req) => new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => { try { resolve(JSON.parse(body)); } catch (e) { reject(e); } });
+});
+
+const server = http.createServer(async (req, res) => {
     setCORSHeaders(res);
 
-    // Handle preflight requests
-    if (req.method === 'OPTIONS') {
-        res.writeHead(200);
-        res.end();
-        return;
-    }
+    if (req.method === 'OPTIONS') { res.writeHead(200); res.end(); return; }
 
-    const parsedUrl = url.parse(req.url);
-    const pathname = parsedUrl.pathname;
+    const pathname = url.parse(req.url).pathname;
 
-    // Serve HTML file at root
-    if (pathname === '/' || pathname === '/index.html') {
-        const htmlPath = path.join(__dirname, 'road-surfacing-tracker-realtime.html');
-        serveStaticFile(htmlPath, res);
-        return;
-    }
-
-    // GET /api/jobs - Get all jobs
-    if (req.method === 'GET' && pathname === '/api/jobs') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(db.getAllJobs()));
-        return;
-    }
-
-    // GET /api/jobs/:id - Get specific job
-    if (req.method === 'GET' && pathname.startsWith('/api/jobs/')) {
-        const jobId = pathname.split('/')[3];
-        const job = db.getJob(jobId);
-        
-        if (job) {
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify(job));
-        } else {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Job not found' }));
+    try {
+        if (pathname === '/' || pathname === '/index.html') {
+            serveStaticFile(path.join(__dirname, 'road-surfacing-tracker-realtime.html'), res);
+            return;
         }
-        return;
-    }
 
-    // POST /api/jobs - Create new job
-    if (req.method === 'POST' && pathname === '/api/jobs') {
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        req.on('end', () => {
-            try {
-                const job = JSON.parse(body);
-                const created = db.createJob(job);
-                res.writeHead(201, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify(created));
-            } catch (error) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+        if (req.method === 'GET' && pathname === '/api/jobs') {
+            const jobs = await getAllJobs();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(jobs));
+            return;
+        }
+
+        if (req.method === 'GET' && pathname.startsWith('/api/jobs/')) {
+            const jobId = pathname.split('/')[3];
+            const job = await getJob(jobId);
+            if (job) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(job));
+            } else {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Job not found' }));
             }
-        });
-        return;
-    }
+            return;
+        }
 
-    // PUT /api/jobs/:id - Update job
-    if (req.method === 'PUT' && pathname.startsWith('/api/jobs/')) {
-        const jobId = pathname.split('/')[3];
-        let body = '';
-        req.on('data', chunk => body += chunk);
-        req.on('end', () => {
-            try {
-                const job = JSON.parse(body);
-                const updated = db.updateJob(jobId, job);
-                
-                if (updated) {
-                    res.writeHead(200, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify(updated));
-                } else {
-                    res.writeHead(404, { 'Content-Type': 'application/json' });
-                    res.end(JSON.stringify({ error: 'Job not found' }));
-                }
-            } catch (error) {
-                res.writeHead(400, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ error: 'Invalid JSON' }));
+        if (req.method === 'POST' && pathname === '/api/jobs') {
+            const job = await readBody(req);
+            const created = await createJob(job);
+            res.writeHead(201, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify(created));
+            return;
+        }
+
+        if (req.method === 'PUT' && pathname.startsWith('/api/jobs/')) {
+            const jobId = pathname.split('/')[3];
+            const job = await readBody(req);
+            const updated = await updateJob(jobId, job);
+            if (updated) {
+                res.writeHead(200, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify(updated));
+            } else {
+                res.writeHead(404, { 'Content-Type': 'application/json' });
+                res.end(JSON.stringify({ error: 'Job not found' }));
             }
-        });
-        return;
-    }
+            return;
+        }
 
-    // DELETE /api/jobs/:id - Delete job
-    if (req.method === 'DELETE' && pathname.startsWith('/api/jobs/')) {
-        const jobId = pathname.split('/')[3];
-        const deleted = db.deleteJob(jobId);
-        
-        if (deleted) {
+        if (req.method === 'DELETE' && pathname.startsWith('/api/jobs/')) {
+            const jobId = pathname.split('/')[3];
+            await deleteJob(jobId);
             res.writeHead(200, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: true }));
-        } else {
-            res.writeHead(404, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'Job not found' }));
+            return;
         }
-        return;
-    }
 
-    // POST /api/cleanup - Manual cleanup trigger
-    if (req.method === 'POST' && pathname === '/api/cleanup') {
-        const deletedCount = db.cleanup();
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ deleted: deletedCount }));
-        return;
-    }
+        if (req.method === 'POST' && pathname === '/api/cleanup') {
+            await cleanupExpiredJobs();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true }));
+            return;
+        }
 
-    // 404
-    res.writeHead(404, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Not found' }));
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Not found' }));
+
+    } catch (err) {
+        console.error('Request error:', err);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+    }
 });
 
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-    console.log('API Endpoints:');
-    console.log('  GET    /api/jobs       - Get all jobs');
-    console.log('  GET    /api/jobs/:id   - Get specific job');
-    console.log('  POST   /api/jobs       - Create new job');
-    console.log('  PUT    /api/jobs/:id   - Update job');
-    console.log('  DELETE /api/jobs/:id   - Delete job');
-    console.log('  POST   /api/cleanup    - Manual cleanup');
-    console.log('\nAuto-cleanup runs every hour');
-    console.log('Jobs are deleted 24 hours after estimated end time\n');
+    console.log(`✅ Server running on port ${PORT}`);
+    console.log(`✅ Supabase: ${SUPABASE_URL}`);
+    console.log(`✅ Data persists across restarts`);
+    console.log(`🧹 Auto-cleanup of expired jobs enabled`);
 });
